@@ -82,59 +82,134 @@ except ImportError as e:
         sys.exit(1)  # Exit if sklearn cannot be imported after reinstall attempt
     st.rerun()
 
-# Load and prepare diabetes data
-diabetes_data = pd.read_csv('diabetes.csv')
-X_diabetes = diabetes_data.drop('Outcome', axis=1)
-y_diabetes = diabetes_data['Outcome']
-diabetes_model = RandomForestClassifier()
-diabetes_model.fit(X_diabetes, y_diabetes)
+# Create a directory for saved models if it doesn't exist
+import os
+if not os.path.exists('saved_models'):
+    os.makedirs('saved_models')
 
-# Load and prepare heart disease data
-heart_data = pd.read_csv('heart.csv')
-X_heart = heart_data.iloc[:, :-1]  # All columns except the last one
-y_heart = heart_data.iloc[:, -1]   # Last column is the target
-heart_disease_model = RandomForestClassifier()
-heart_disease_model.fit(X_heart, y_heart)
+# Function to load a model or train it if the pickle file doesn't exist
+def load_or_train_model(model_name, data_path, target_column, drop_columns=None):
+    pickle_path = f'saved_models/{model_name}.pkl'
 
-# Load and prepare Parkinson's data
-parkinsons_data = pd.read_csv('parkinsons.csv')
-# Drop the name column as it's not a feature
-parkinsons_data = parkinsons_data.drop('name', axis=1)
-# Extract features and target
-X_parkinsons = parkinsons_data.drop('status', axis=1)
-y_parkinsons = parkinsons_data['status']
-parkinsons_model = RandomForestClassifier()
-parkinsons_model.fit(X_parkinsons, y_parkinsons)
+    # Try to load the model from pickle file
+    try:
+        with open(pickle_path, 'rb') as f:
+            model = pickle.load(f)
+        st.info(f"Loaded {model_name} from saved model file.")
+        return model, True
+    except (FileNotFoundError, EOFError, pickle.UnpicklingError):
+        st.warning(f"Saved model for {model_name} not found or corrupted. Training a new model...")
 
-# Check if lung cancer dataset exists and load it
+        try:
+            # Load the data
+            data = pd.read_csv(data_path)
+
+            # Drop non-feature columns if specified
+            if drop_columns:
+                data = data.drop(drop_columns, axis=1)
+
+            # Extract features and target
+            if target_column in data.columns:
+                X = data.drop(target_column, axis=1)
+                y = data[target_column]
+            else:
+                # For heart disease data where target might be the last column without a name
+                X = data.iloc[:, :-1]
+                y = data.iloc[:, -1]
+
+            # Train the model
+            model = RandomForestClassifier(n_estimators=100, random_state=42)
+            model.fit(X, y)
+
+            # Save the model for future use
+            try:
+                with open(pickle_path, 'wb') as f:
+                    pickle.dump(model, f)
+                st.info(f"Trained and saved new {model_name} model.")
+            except Exception as e:
+                st.warning(f"Could not save {model_name} model: {e}")
+
+            return model, True
+        except FileNotFoundError:
+            st.error(f"Dataset for {model_name} not found. This prediction will be disabled.")
+            return None, False
+        except Exception as e:
+            st.error(f"Error training {model_name} model: {e}")
+            return None, False
+
+# Load or train diabetes model
+diabetes_model, _ = load_or_train_model(
+    model_name='diabetes_model',
+    data_path='diabetes.csv',
+    target_column='Outcome'
+)
+
+# Load diabetes data for feature names
 try:
-    # Load and prepare lung cancer data
-    lung_cancer_data = pd.read_csv('lung_cancer.csv')
-    # Assuming the target column is named 'Cancer' (1 for cancer, 0 for no cancer)
-    # Modify this according to your actual dataset
-    X_lung_cancer = lung_cancer_data.drop('Cancer', axis=1)
-    y_lung_cancer = lung_cancer_data['Cancer']
-    lung_cancer_model = RandomForestClassifier()
-    lung_cancer_model.fit(X_lung_cancer, y_lung_cancer)
-    lung_cancer_model_ready = True
-except FileNotFoundError:
-    st.warning("Lung cancer dataset not found. Lung cancer prediction will be disabled.")
-    lung_cancer_model_ready = False
+    diabetes_data = pd.read_csv('diabetes.csv')
+    X_diabetes = diabetes_data.drop('Outcome', axis=1)
+except:
+    st.error("Could not load diabetes dataset for feature names.")
 
-# Check if hypothyroid dataset exists and load it
+# Load or train heart disease model
+heart_disease_model, _ = load_or_train_model(
+    model_name='heart_disease_model',
+    data_path='heart.csv',
+    target_column='target'  # This might be different in your dataset
+)
+
+# Load heart data for feature names
 try:
-    # Load and prepare hypothyroid data
-    hypothyroid_data = pd.read_csv('hypothyroid.csv')
-    # Assuming the target column is named 'Hypothyroid' (1 for hypothyroid, 0 for normal)
-    # Modify this according to your actual dataset
-    X_hypothyroid = hypothyroid_data.drop('Hypothyroid', axis=1)
-    y_hypothyroid = hypothyroid_data['Hypothyroid']
-    hypothyroid_model = RandomForestClassifier()
-    hypothyroid_model.fit(X_hypothyroid, y_hypothyroid)
-    hypothyroid_model_ready = True
-except FileNotFoundError:
-    st.warning("Hypothyroid dataset not found. Hypothyroid prediction will be disabled.")
-    hypothyroid_model_ready = False
+    heart_data = pd.read_csv('heart.csv')
+    X_heart = heart_data.iloc[:, :-1]
+except:
+    st.error("Could not load heart disease dataset for feature names.")
+
+# Load or train Parkinson's model
+parkinsons_model, _ = load_or_train_model(
+    model_name='parkinsons_model',
+    data_path='parkinsons.csv',
+    target_column='status',
+    drop_columns=['name']
+)
+
+# Load Parkinson's data for feature names
+try:
+    parkinsons_data = pd.read_csv('parkinsons.csv')
+    parkinsons_data = parkinsons_data.drop('name', axis=1)
+    X_parkinsons = parkinsons_data.drop('status', axis=1)
+except:
+    st.error("Could not load Parkinson's dataset for feature names.")
+
+# Load or train lung cancer model
+lung_cancer_model, lung_cancer_model_ready = load_or_train_model(
+    model_name='lung_cancer_model',
+    data_path='lung_cancer.csv',
+    target_column='Cancer'
+)
+
+# Load lung cancer data for feature names if model is ready
+if lung_cancer_model_ready:
+    try:
+        lung_cancer_data = pd.read_csv('lung_cancer.csv')
+        X_lung_cancer = lung_cancer_data.drop('Cancer', axis=1)
+    except:
+        st.error("Could not load lung cancer dataset for feature names.")
+
+# Load or train hypothyroid model
+hypothyroid_model, hypothyroid_model_ready = load_or_train_model(
+    model_name='hypothyroid_model',
+    data_path='hypothyroid.csv',
+    target_column='Hypothyroid'
+)
+
+# Load hypothyroid data for feature names if model is ready
+if hypothyroid_model_ready:
+    try:
+        hypothyroid_data = pd.read_csv('hypothyroid.csv')
+        X_hypothyroid = hypothyroid_data.drop('Hypothyroid', axis=1)
+    except:
+        st.error("Could not load hypothyroid dataset for feature names.")
 
 
 #Sidebar for navigators
@@ -485,99 +560,6 @@ if (selected == 'Parkinsons Prediction'):
     or consult with a healthcare professional for a proper assessment.
     """)
 
-    # Create tabs for organized input
-    tab1, tab2, tab3 = st.tabs(["Frequency Measures", "Amplitude Measures", "Nonlinear Measures"])
-
-    with tab1:
-        st.subheader("Frequency Measurements")
-        st.write("These measure the fundamental frequency of the voice and its variations.")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            fo = st.text_input('Average vocal frequency (Hz)',
-                              help='Normal range: 107-177 Hz for men, 164-258 Hz for women')
-
-            fhi = st.text_input('Maximum vocal frequency (Hz)',
-                               help='Usually higher than the average frequency')
-
-            flo = st.text_input('Minimum vocal frequency (Hz)',
-                               help='Usually lower than the average frequency')
-
-        with col2:
-            Jitter_percent = st.text_input('Jitter in percentage (%)',
-                                         help='Frequency variation - normal range: <1.04%')
-
-            Jitter_Abs = st.text_input('Absolute jitter in microseconds',
-                                     help='Frequency variation - normal range: <83.2 μs')
-
-            RAP = st.text_input('Relative Amplitude Perturbation',
-                              help='Frequency variation - normal range: <0.680%')
-
-            PPQ = st.text_input('Five-point Period Perturbation',
-                              help='Frequency variation - normal range: <0.840%')
-
-            DDP = st.text_input('Average difference of differences',
-                              help='Frequency variation - normal range: <2.040%')
-
-    with tab2:
-        st.subheader("Amplitude Measurements")
-        st.write("These measure the amplitude variations in the voice.")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            Shimmer = st.text_input('Shimmer in percentage (%)',
-                                  help='Amplitude variation - normal range: <3.810%')
-
-            Shimmer_dB = st.text_input('Shimmer in decibels (dB)',
-                                     help='Amplitude variation - normal range: <0.350 dB')
-
-            APQ3 = st.text_input('Three-point Amplitude Perturbation',
-                               help='Amplitude variation - normal range: <3.070%')
-
-        with col2:
-            APQ5 = st.text_input('Five-point Amplitude Perturbation',
-                               help='Amplitude variation - normal range: <3.420%')
-
-            APQ = st.text_input('11-point Amplitude Perturbation',
-                              help='Amplitude variation - normal range: <3.960%')
-
-            DDA = st.text_input('Average absolute differences',
-                              help='Amplitude variation - normal range: <3.590%')
-
-    with tab3:
-        st.subheader("Nonlinear Measures & Noise Ratios")
-        st.write("These measure noise, nonlinear dynamics, and signal complexity.")
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            NHR = st.text_input('Noise-to-Harmonics Ratio',
-                              help='Ratio of noise to tonal components - normal range: <0.190')
-
-            HNR = st.text_input('Harmonics-to-Noise Ratio (dB)',
-                              help='Ratio of harmonics to noise - higher values are better')
-
-            RPDE = st.text_input('Recurrence Period Density Entropy',
-                               help='Measures voice irregularity - range: 0 to 1')
-
-            DFA = st.text_input('Detrended Fluctuation Analysis',
-                              help='Signal fractal scaling exponent - range: 0.5 to 1')
-
-        with col2:
-            spread1 = st.text_input('Frequency variation measure 1',
-                                  help='Nonlinear measure of frequency variation')
-
-            spread2 = st.text_input('Frequency variation measure 2',
-                                  help='Nonlinear measure of frequency variation')
-
-            D2 = st.text_input('Correlation dimension',
-                             help='Measures complexity of the voice signal')
-
-            PPE = st.text_input('Pitch Period Entropy',
-                              help='Measures impaired control of stable pitch - range: 0 to 1')
-
     # Example values for Parkinson's
     parkinsons_example = {
         'fo': '119.992', 'fhi': '157.302', 'flo': '74.997',
@@ -591,12 +573,127 @@ if (selected == 'Parkinsons Prediction'):
         'D2': '2.301442', 'PPE': '0.284654'
     }
 
-    # Add example values button
+    # Add example values button at the top
     col1, col2 = st.columns([1, 3])
     with col1:
         if st.button('Fill Example Values', key='parkinsons_example'):
             for key, value in parkinsons_example.items():
                 st.session_state[key] = value
+
+    # Create tabs for organized input
+    tab1, tab2, tab3 = st.tabs(["Frequency Measures", "Amplitude Measures", "Nonlinear Measures"])
+
+    with tab1:
+        st.subheader("Frequency Measurements")
+        st.write("These measure the fundamental frequency of the voice and its variations.")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            fo = st.text_input('Average vocal frequency (Hz)',
+                              key='fo',
+                              help='Normal range: 107-177 Hz for men, 164-258 Hz for women')
+
+            fhi = st.text_input('Maximum vocal frequency (Hz)',
+                               key='fhi',
+                               help='Usually higher than the average frequency')
+
+            flo = st.text_input('Minimum vocal frequency (Hz)',
+                               key='flo',
+                               help='Usually lower than the average frequency')
+
+        with col2:
+            Jitter_percent = st.text_input('Jitter in percentage (%)',
+                                         key='Jitter_percent',
+                                         help='Frequency variation - normal range: <1.04%')
+
+            Jitter_Abs = st.text_input('Absolute jitter in microseconds',
+                                     key='Jitter_Abs',
+                                     help='Frequency variation - normal range: <83.2 μs')
+
+            RAP = st.text_input('Relative Amplitude Perturbation',
+                              key='RAP',
+                              help='Frequency variation - normal range: <0.680%')
+
+            PPQ = st.text_input('Five-point Period Perturbation',
+                              key='PPQ',
+                              help='Frequency variation - normal range: <0.840%')
+
+            DDP = st.text_input('Average difference of differences',
+                              key='DDP',
+                              help='Frequency variation - normal range: <2.040%')
+
+    with tab2:
+        st.subheader("Amplitude Measurements")
+        st.write("These measure the amplitude variations in the voice.")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            Shimmer = st.text_input('Shimmer in percentage (%)',
+                                  key='Shimmer',
+                                  help='Amplitude variation - normal range: <3.810%')
+
+            Shimmer_dB = st.text_input('Shimmer in decibels (dB)',
+                                     key='Shimmer_dB',
+                                     help='Amplitude variation - normal range: <0.350 dB')
+
+            APQ3 = st.text_input('Three-point Amplitude Perturbation',
+                               key='APQ3',
+                               help='Amplitude variation - normal range: <3.070%')
+
+        with col2:
+            APQ5 = st.text_input('Five-point Amplitude Perturbation',
+                               key='APQ5',
+                               help='Amplitude variation - normal range: <3.420%')
+
+            APQ = st.text_input('11-point Amplitude Perturbation',
+                              key='APQ',
+                              help='Amplitude variation - normal range: <3.960%')
+
+            DDA = st.text_input('Average absolute differences',
+                              key='DDA',
+                              help='Amplitude variation - normal range: <3.590%')
+
+    with tab3:
+        st.subheader("Nonlinear Measures & Noise Ratios")
+        st.write("These measure noise, nonlinear dynamics, and signal complexity.")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            NHR = st.text_input('Noise-to-Harmonics Ratio',
+                              key='NHR',
+                              help='Ratio of noise to tonal components - normal range: <0.190')
+
+            HNR = st.text_input('Harmonics-to-Noise Ratio (dB)',
+                              key='HNR',
+                              help='Ratio of harmonics to noise - higher values are better')
+
+            RPDE = st.text_input('Recurrence Period Density Entropy',
+                               key='RPDE',
+                               help='Measures voice irregularity - range: 0 to 1')
+
+            DFA = st.text_input('Detrended Fluctuation Analysis',
+                              key='DFA',
+                              help='Signal fractal scaling exponent - range: 0.5 to 1')
+
+        with col2:
+            spread1 = st.text_input('Frequency variation measure 1',
+                                  key='spread1',
+                                  help='Nonlinear measure of frequency variation')
+
+            spread2 = st.text_input('Frequency variation measure 2',
+                                  key='spread2',
+                                  help='Nonlinear measure of frequency variation')
+
+            D2 = st.text_input('Correlation dimension',
+                             key='D2',
+                             help='Measures complexity of the voice signal')
+
+            PPE = st.text_input('Pitch Period Entropy',
+                              key='PPE',
+                              help='Measures impaired control of stable pitch - range: 0 to 1')
 
     # code for Prediction
     parkinsons_diagnosis = ''
@@ -855,64 +952,6 @@ if (selected == 'Hypothyroid Prediction'):
         **Note:** This tool is for educational purposes only and should not replace professional medical advice.
         """)
 
-        # Create tabs for better organization
-        tab1, tab2 = st.tabs(["Thyroid Tests", "Patient Information"])
-
-        with tab1:
-            st.subheader("Thyroid Function Tests")
-            st.write("These are blood tests that measure thyroid hormone levels.")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                tsh = st.text_input('TSH Level (mIU/L)',
-                                  help='Normal range: 0.4-4.0 mIU/L. Higher values may indicate hypothyroidism.')
-
-                t3 = st.text_input('T3 Level (ng/dL)',
-                                 help='Normal range: 80-200 ng/dL. Lower values may indicate hypothyroidism.')
-
-            with col2:
-                t4 = st.text_input('T4 Level (μg/dL)',
-                                 help='Normal range: 5.0-12.0 μg/dL. Lower values may indicate hypothyroidism.')
-
-                t4u = st.text_input('T4U Level',
-                                  help='T4 Uptake Ratio. Normal range: 0.8-1.2.')
-
-                fti = st.text_input('FTI Value',
-                                  help='Free Thyroxine Index. Normal range: 6.0-10.5.')
-
-        with tab2:
-            st.subheader("Patient Information")
-            st.write("These are details about the patient's health history and demographics.")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                age = st.text_input('Age', key='hypo_age',
-                                  help='Patient age in years')
-
-                gender = st.text_input('Gender (0 for Female, 1 for Male)', key='hypo_gender',
-                                     help='0 = Female, 1 = Male')
-
-                on_thyroxine = st.text_input('On Thyroxine Medication (0 for No, 1 for Yes)',
-                                           help='Is the patient currently taking thyroxine medication?')
-
-                on_antithyroid_meds = st.text_input('On Antithyroid Medication (0 for No, 1 for Yes)',
-                                                  help='Is the patient currently taking anti-thyroid medication?')
-
-            with col2:
-                sick = st.text_input('Currently Sick (0 for No, 1 for Yes)',
-                                   help='Is the patient currently sick with another illness?')
-
-                pregnant = st.text_input('Pregnant (0 for No, 1 for Yes)',
-                                       help='Is the patient pregnant?')
-
-                thyroid_surgery = st.text_input('Previous Thyroid Surgery (0 for No, 1 for Yes)',
-                                              help='Has the patient had thyroid surgery in the past?')
-
-                tumor = st.text_input('Thyroid Tumor (0 for No, 1 for Yes)',
-                                    help='Does the patient have a thyroid tumor?')
-
         # Example values for hypothyroidism
         hypothyroid_example = {
             'hypo_age': '55',
@@ -930,12 +969,81 @@ if (selected == 'Hypothyroid Prediction'):
             'tumor': '0'
         }
 
-        # Add example values button
+        # Add example values button at the top
         col1, col2 = st.columns([1, 3])
         with col1:
             if st.button('Fill Example Values', key='hypothyroid_example'):
                 for key, value in hypothyroid_example.items():
                     st.session_state[key] = value
+
+        # Create tabs for better organization
+        tab1, tab2 = st.tabs(["Thyroid Tests", "Patient Information"])
+
+        with tab1:
+            st.subheader("Thyroid Function Tests")
+            st.write("These are blood tests that measure thyroid hormone levels.")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                tsh = st.text_input('TSH Level (mIU/L)',
+                                  key='tsh',
+                                  help='Normal range: 0.4-4.0 mIU/L. Higher values may indicate hypothyroidism.')
+
+                t3 = st.text_input('T3 Level (ng/dL)',
+                                 key='t3',
+                                 help='Normal range: 80-200 ng/dL. Lower values may indicate hypothyroidism.')
+
+            with col2:
+                t4 = st.text_input('T4 Level (μg/dL)',
+                                 key='t4',
+                                 help='Normal range: 5.0-12.0 μg/dL. Lower values may indicate hypothyroidism.')
+
+                t4u = st.text_input('T4U Level',
+                                  key='t4u',
+                                  help='T4 Uptake Ratio. Normal range: 0.8-1.2.')
+
+                fti = st.text_input('FTI Value',
+                                  key='fti',
+                                  help='Free Thyroxine Index. Normal range: 6.0-10.5.')
+
+        with tab2:
+            st.subheader("Patient Information")
+            st.write("These are details about the patient's health history and demographics.")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+                age = st.text_input('Age', key='hypo_age',
+                                  help='Patient age in years')
+
+                gender = st.text_input('Gender (0 for Female, 1 for Male)', key='hypo_gender',
+                                     help='0 = Female, 1 = Male')
+
+                on_thyroxine = st.text_input('On Thyroxine Medication (0 for No, 1 for Yes)',
+                                           key='on_thyroxine',
+                                           help='Is the patient currently taking thyroxine medication?')
+
+                on_antithyroid_meds = st.text_input('On Antithyroid Medication (0 for No, 1 for Yes)',
+                                                  key='on_antithyroid_meds',
+                                                  help='Is the patient currently taking anti-thyroid medication?')
+
+            with col2:
+                sick = st.text_input('Currently Sick (0 for No, 1 for Yes)',
+                                   key='sick',
+                                   help='Is the patient currently sick with another illness?')
+
+                pregnant = st.text_input('Pregnant (0 for No, 1 for Yes)',
+                                       key='pregnant',
+                                       help='Is the patient pregnant?')
+
+                thyroid_surgery = st.text_input('Previous Thyroid Surgery (0 for No, 1 for Yes)',
+                                              key='thyroid_surgery',
+                                              help='Has the patient had thyroid surgery in the past?')
+
+                tumor = st.text_input('Thyroid Tumor (0 for No, 1 for Yes)',
+                                    key='tumor',
+                                    help='Does the patient have a thyroid tumor?')
 
         # code for Prediction
         hypothyroid_diagnosis = ''
@@ -997,995 +1105,6 @@ if (selected == 'Hypothyroid Prediction'):
                         pass
 
             except ValueError:
-                st.error("Please enter valid numerical values for all fields or use the 'Fill with Example Values' button")
+                st.error("Please enter valid numerical values for all fields or use the 'Fill Example Values' button")
             except Exception as e:
                 st.error(f"An error occurred: {e}")
-    
-# -*- coding: utf-8 -*-
-
-import pickle
-import streamlit as st
-import sys
-import subprocess
-import importlib
-
-# Check if required packages are installed, if not install them
-required_packages = {
-    'streamlit_option_menu': 'streamlit-option-menu',
-    'scikit-learn': 'scikit-learn',  
-    'pandas': 'pandas'
-}
-
-for package_name in required_packages.values():
-    try:
-        if package_name == 'scikit-learn':
-            importlib.import_module('sklearn')
-            importlib.import_module('sklearn.model_selection')
-        elif package_name == 'streamlit-option-menu':
-            importlib.import_module('streamlit_option_menu')
-        else:
-            importlib.import_module(package_name)
-    except ImportError:
-        st.info(f"Installing required package: {package_name}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", package_name])
-        st.rerun()
-
-# Now import after ensuring it's installed
-from streamlit_option_menu import option_menu
-
-# Set page configuration
-st.set_page_config(page_title="Health Assistant",
-                   layout="wide",
-                   page_icon="")
-
-# Loading the saved models
-import pandas as pd
-
-# Import sklearn modules with proper error handling
-try:
-    import sklearn
-    from sklearn.model_selection import train_test_split
-    from sklearn.ensemble import RandomForestClassifier()
-
-    try:
-        sklearn_version = sklearn.__version__
-        st.info(f"Using scikit-learn version: {sklearn_version}")
-    except AttributeError:
-        st.info("scikit-learn is successfully imported")
-
-except ImportError as e:
-    st.error(f"Error importing sklearn modules: {e}")
-    st.info("Attempting to reinstall scikit-learn...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "scikit-learn"])
-    try:
-        import sklearn
-        from sklearn.model_selection import train_test_split
-        from sklearn.ensemble import RandomForestClassifier()
-
-        try:
-            sklearn_version = sklearn.__version__
-            st.info(f"Using scikit-learn version: {sklearn_version}")
-        except AttributeError:
-            st.info("scikit-learn is successfully imported after reinstallation")
-
-    except ImportError as e:
-        st.error(f"Still having issues with scikit-learn: {e}")
-        st.error("Please try restarting the application or installing scikit-learn manually.")
-        sys.exit(1)  
-    st.rerun()
-
-# Load and prepare diabetes data
-diabetes_data = pd.read_csv('diabetes.csv')
-X_diabetes = diabetes_data.drop('Outcome', axis=1)
-y_diabetes = diabetes_data['Outcome']
-diabetes_model = RandomForestClassifier()
-diabetes_model.fit(X_diabetes, y_diabetes)
-
-# Load and prepare heart disease data
-heart_data = pd.read_csv('heart.csv')
-X_heart = heart_data.iloc[:, :-1]  
-y_heart = heart_data.iloc[:, -1]   
-heart_disease_model = RandomForestClassifier()
-heart_disease_model.fit(X_heart, y_heart)
-
-# Load and prepare Parkinson's data
-parkinsons_data = pd.read_csv('parkinsons.csv')
-parkinsons_data = parkinsons_data.drop('name', axis=1)
-X_parkinsons = parkinsons_data.drop('status', axis=1)
-y_parkinsons = parkinsons_data['status']
-parkinsons_model = RandomForestClassifier()
-parkinsons_model.fit(X_parkinsons, y_parkinsons)
-
-# Check if lung cancer dataset exists and load it
-try:
-    lung_cancer_data = pd.read_csv('lung_cancer.csv')
-    X_lung_cancer = lung_cancer_data.drop('Cancer', axis=1)
-    y_lung_cancer = lung_cancer_data['Cancer']
-    lung_cancer_model = RandomForestClassifier()
-    lung_cancer_model.fit(X_lung_cancer, y_lung_cancer)
-    lung_cancer_model_ready = True
-except FileNotFoundError:
-    st.warning("Lung cancer dataset not found. Lung cancer prediction will be disabled.")
-    lung_cancer_model_ready = False
-
-# Check if hypothyroid dataset exists and load it
-try:
-    hypothyroid_data = pd.read_csv('hypothyroid.csv')
-    X_hypothyroid = hypothyroid_data.drop('Hypothyroid', axis=1)
-    y_hypothyroid = hypothyroid_data['Hypothyroid']
-    hypothyroid_model = RandomForestClassifier()
-    hypothyroid_model.fit(X_hypothyroid, y_hypothyroid)
-    hypothyroid_model_ready = True
-except FileNotFoundError:
-    st.warning("Hypothyroid dataset not found. Hypothyroid prediction will be disabled.")
-    hypothyroid_model_ready = False
-
-#Sidebar for navigators
-with st.sidebar:
-    selected = option_menu('Multiple Disease Prediction System',
-                           ['Diabetes Prediction',
-                            'Heart Disease Prediction',
-                            'Parkinsons Prediction',
-                            'Lung Cancer Prediction',
-                            'Hypothyroid Prediction'],
-                           icons = ['activity', 'heart', 'person', 'lungs', 'thermometer'],
-                           default_index = 0)
-    
-# Diabetes Prediction Page
-if (selected == 'Diabetes Prediction'):
-
-    st.title('Diabetes Prediction Using ML')
-
-    st.write("""
-    ### About Diabetes
-    Diabetes is a chronic condition that affects how your body processes blood sugar (glucose).
-    This tool uses several health metrics to assess the likelihood of diabetes.
-
-    **Note:** This tool is for educational purposes only and should not replace professional medical advice.
-    """)
-
-    diabetes_example = {
-        'Pregnancies': '6',
-        'Glucose': '148',
-        'BloodPressure': '72',
-        'SkinThickness': '35',
-        'Insulin': '0',
-        'BMI': '33.6',
-        'DiabetesPedigreeFunction': '0.627',
-        'Age': '50'
-    }
-
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        if st.button('Fill Example Values', key='diabetes_example'):
-            for key, value in diabetes_example.items():
-                st.session_state[key] = value
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-       Pregnancies = st.text_input('Number of Pregnancies',
-                                  key='Pregnancies',
-                                  help='Number of times pregnant (0 for males)')
-
-    with col2:
-       Glucose = st.text_input('Glucose Level (mg/dL)',
-                              key='Glucose',
-                              help='Plasma glucose concentration after 2 hours in an oral glucose tolerance test. Normal fasting: 70-99 mg/dL')
-
-    with col3:
-       BloodPressure = st.text_input('Blood Pressure (mm Hg)',
-                                    key='BloodPressure',
-                                    help='Diastolic blood pressure. Normal: <80 mm Hg')
-
-    with col1:
-       SkinThickness = st.text_input('Skin Thickness (mm)',
-                                    key='SkinThickness',
-                                    help='Triceps skin fold thickness. Measures fat content')
-
-    with col2:
-       Insulin = st.text_input('Insulin Level (μU/ml)',
-                              key='Insulin',
-                              help='2-Hour serum insulin. Normal fasting: <25 μU/ml')
-
-    with col3:
-       BMI = st.text_input('BMI value',
-                          key='BMI',
-                          help='Body Mass Index. Normal: 18.5-24.9')
-
-    with col1:
-       DiabetesPedigreeFunction = st.text_input('Diabetes Pedigree Function',
-                                               key='DiabetesPedigreeFunction',
-                                               help='Scores likelihood of diabetes based on family history')
-
-    with col2:
-       Age = st.text_input('Age (years)',
-                          key='Age',
-                          help='Age in years')
-
-    diab_diagnosis = ''
-
-    if st.button('Diabetes Test Result'):
-        try:
-            input_dict = {
-                'Pregnancies': Pregnancies,
-                'Glucose': Glucose,
-                'BloodPressure': BloodPressure,
-                'SkinThickness': SkinThickness,
-                'Insulin': Insulin,
-                'BMI': BMI,
-                'DiabetesPedigreeFunction': DiabetesPedigreeFunction,
-                'Age': Age
-            }
-
-            input_df = pd.DataFrame([input_dict])
-
-            for column in input_df.columns:
-                input_df[column] = input_df[column].astype(float)
-
-            diab_prediction = diabetes_model.predict(input_df)
-
-            if diab_prediction[0] == 1:
-                diab_diagnosis = 'The person is likely to have diabetes'
-                st.warning("""
-                **What is Diabetes?**
-                Diabetes is a metabolic disease that causes high blood sugar levels. The hormone insulin
-                moves sugar from the blood into your cells to be stored or used for energy. With diabetes,
-                your body either doesn't make enough insulin or can't effectively use the insulin it makes.
-
-                **Next Steps:**
-                If you received a positive prediction, please consult with a healthcare provider for proper
-                testing and diagnosis. This prediction is not a medical diagnosis.
-                """)
-            else:
-                diab_diagnosis = 'The person is not likely to have diabetes'
-
-            st.success(diab_diagnosis)
-
-            try:
-                glucose_value = float(Glucose)
-                bmi_value = float(BMI)
-                if glucose_value > 99 and diab_prediction[0] == 0:
-                    st.info("""
-                    **Note:** Your glucose level appears to be elevated, which can be a risk factor for prediabetes.
-                    Consider discussing these results with your healthcare provider.
-                    """)
-                if bmi_value > 25 and diab_prediction[0] == 0:
-                    st.info# -*- coding: utf-8 -*-
-
-import pickle
-import streamlit as st
-import sys
-import subprocess
-import importlib
-
-# Check if required packages are installed, if not install them
-required_packages = {
-    'streamlit_option_menu': 'streamlit-option-menu',
-    'scikit-learn': 'scikit-learn',  
-    'pandas': 'pandas'
-}
-
-for package_name in required_packages.values():
-    try:
-        if package_name == 'scikit-learn':
-            importlib.import_module('sklearn')
-            importlib.import_module('sklearn.model_selection')
-        elif package_name == 'streamlit-option-menu':
-            importlib.import_module('streamlit_option_menu')
-        else:
-            importlib.import_module(package_name)
-    except ImportError:
-        st.info(f"Installing required package: {package_name}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", package_name])
-        st.rerun()
-
-# Now import after ensuring it's installed
-from streamlit_option_menu import option_menu
-
-# Set page configuration
-st.set_page_config(page_title="Health Assistant",
-                   layout="wide",
-                   page_icon="")
-
-# Loading the saved models
-import pandas as pd
-
-# Import sklearn modules with proper error handling
-try:
-    import sklearn
-    from sklearn.model_selection import train_test_split
-    from sklearn.ensemble import RandomForestClassifier()
-
-    try:
-        sklearn_version = sklearn.__version__
-        st.info(f"Using scikit-learn version: {sklearn_version}")
-    except AttributeError:
-        st.info("scikit-learn is successfully imported")
-
-except ImportError as e:
-    st.error(f"Error importing sklearn modules: {e}")
-    st.info("Attempting to reinstall scikit-learn...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "scikit-learn"])
-    try:
-        import sklearn
-        from sklearn.model_selection import train_test_split
-        from sklearn.ensemble import RandomForestClassifier()
-
-        try:
-            sklearn_version = sklearn.__version__
-            st.info(f"Using scikit-learn version: {sklearn_version}")
-        except AttributeError:
-            st.info("scikit-learn is successfully imported after reinstallation")
-
-    except ImportError as e:
-        st.error(f"Still having issues with scikit-learn: {e}")
-        st.error("Please try restarting the application or installing scikit-learn manually.")
-        sys.exit(1)  
-    st.rerun()
-
-# Load and prepare diabetes data
-diabetes_data = pd.read_csv('diabetes.csv')
-X_diabetes = diabetes_data.drop('Outcome', axis=1)
-y_diabetes = diabetes_data['Outcome']
-diabetes_model = RandomForestClassifier()
-diabetes_model.fit(X_diabetes, y_diabetes)
-
-# Load and prepare heart disease data
-heart_data = pd.read_csv('heart.csv')
-X_heart = heart_data.iloc[:, :-1]  
-y_heart = heart_data.iloc[:, -1]   
-heart_disease_model = RandomForestClassifier()
-heart_disease_model.fit(X_heart, y_heart)
-
-# Load and prepare Parkinson's data
-parkinsons_data = pd.read_csv('parkinsons.csv')
-parkinsons_data = parkinsons_data.drop('name', axis=1)
-X_parkinsons = parkinsons_data.drop('status', axis=1)
-y_parkinsons = parkinsons_data['status']
-parkinsons_model = RandomForestClassifier()
-parkinsons_model.fit(X_parkinsons, y_parkinsons)
-
-# Check if lung cancer dataset exists and load it
-try:
-    lung_cancer_data = pd.read_csv('lung_cancer.csv')
-    X_lung_cancer = lung_cancer_data.drop('Cancer', axis=1)
-    y_lung_cancer = lung_cancer_data['Cancer']
-    lung_cancer_model = RandomForestClassifier()
-    lung_cancer_model.fit(X_lung_cancer, y_lung_cancer)
-    lung_cancer_model_ready = True
-except FileNotFoundError:
-    st.warning("Lung cancer dataset not found. Lung cancer prediction will be disabled.")
-    lung_cancer_model_ready = False
-
-# Check if hypothyroid dataset exists and load it
-try:
-    hypothyroid_data = pd.read_csv('hypothyroid.csv')
-    X_hypothyroid = hypothyroid_data.drop('Hypothyroid', axis=1)
-    y_hypothyroid = hypothyroid_data['Hypothyroid']
-    hypothyroid_model = RandomForestClassifier()
-    hypothyroid_model.fit(X_hypothyroid, y_hypothyroid)
-    hypothyroid_model_ready = True
-except FileNotFoundError:
-    st.warning("Hypothyroid dataset not found. Hypothyroid prediction will be disabled.")
-    hypothyroid_model_ready = False
-
-#Sidebar for navigators
-with st.sidebar:
-    selected = option_menu('Multiple Disease Prediction System',
-                           ['Diabetes Prediction',
-                            'Heart Disease Prediction',
-                            'Parkinsons Prediction',
-                            'Lung Cancer Prediction',
-                            'Hypothyroid Prediction'],
-                           icons = ['activity', 'heart', 'person', 'lungs', 'thermometer'],
-                           default_index = 0)
-    
-# Diabetes Prediction Page
-if (selected == 'Diabetes Prediction'):
-
-    st.title('Diabetes Prediction Using ML')
-
-    st.write("""
-    ### About Diabetes
-    Diabetes is a chronic condition that affects how your body processes blood sugar (glucose).
-    This tool uses several health metrics to assess the likelihood of diabetes.
-
-    **Note:** This tool is for educational purposes only and should not replace professional medical advice.
-    """)
-
-    diabetes_example = {
-        'Pregnancies': '6',
-        'Glucose': '148',
-        'BloodPressure': '72',
-        'SkinThickness': '35',
-        'Insulin': '0',
-        'BMI': '33.6',
-        'DiabetesPedigreeFunction': '0.627',
-        'Age': '50'
-    }
-
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        if st.button('Fill Example Values', key='diabetes_example'):
-            for key, value in diabetes_example.items():
-                st.session_state[key] = value
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-       Pregnancies = st.text_input('Number of Pregnancies',
-                                  key='Pregnancies',
-                                  help='Number of times pregnant (0 for males)')
-
-    with col2:
-       Glucose = st.text_input('Glucose Level (mg/dL)',
-                              key='Glucose',
-                              help='Plasma glucose concentration after 2 hours in an oral glucose tolerance test. Normal fasting: 70-99 mg/dL')
-
-    with col3:
-       BloodPressure = st.text_input('Blood Pressure (mm Hg)',
-                                    key='BloodPressure',
-                                    help='Diastolic blood pressure. Normal: <80 mm Hg')
-
-    with col1:
-       SkinThickness = st.text_input('Skin Thickness (mm)',
-                                    key='SkinThickness',
-                                    help='Triceps skin fold thickness. Measures fat content')
-
-    with col2:
-       Insulin = st.text_input('Insulin Level (μU/ml)',
-                              key='Insulin',
-                              help='2-Hour serum insulin. Normal fasting: <25 μU/ml')
-
-    with col3:
-       BMI = st.text_input('BMI value',
-                          key='BMI',
-                          help='Body Mass Index. Normal: 18.5-24.9')
-
-    with col1:
-       DiabetesPedigreeFunction = st.text_input('Diabetes Pedigree Function',
-                                               key='DiabetesPedigreeFunction',
-                                               help='Scores likelihood of diabetes based on family history')
-
-    with col2:
-       Age = st.text_input('Age (years)',
-                          key='Age',
-                          help='Age in years')
-
-    diab_diagnosis = ''
-
-    if st.button('Diabetes Test Result'):
-        try:
-            input_dict = {
-                'Pregnancies': Pregnancies,
-                'Glucose': Glucose,
-                'BloodPressure': BloodPressure,
-                'SkinThickness': SkinThickness,
-                'Insulin': Insulin,
-                'BMI': BMI,
-                'DiabetesPedigreeFunction': DiabetesPedigreeFunction,
-                'Age': Age
-            }
-
-            input_df = pd.DataFrame([input_dict])
-
-            for column in input_df.columns:
-                input_df[column] = input_df[column].astype(float)
-
-            diab_prediction = diabetes_model.predict(input_df)
-
-            if diab_prediction[0] == 1:
-                diab_diagnosis = 'The person is likely to have diabetes'
-                st.warning("""
-                **What is Diabetes?**
-                Diabetes is a metabolic disease that causes high blood sugar levels. The hormone insulin
-                moves sugar from the blood into your cells to be stored or used for energy. With diabetes,
-                your body either doesn't make enough insulin or can't effectively use the insulin it makes.
-
-                **Next Steps:**
-                If you received a positive prediction, please consult with a healthcare provider for proper
-                testing and diagnosis. This prediction is not a medical diagnosis.
-                """)
-            else:
-                diab_diagnosis = 'The person is not likely to have diabetes'
-
-            st.success(diab_diagnosis)
-
-            try:
-                glucose_value = float(Glucose)
-                bmi_value = float(BMI)
-                if glucose_value > 99 and diab_prediction[0] == 0:
-                    st.info("""
-                    **Note:** Your glucose level appears to be elevated, which can be a risk factor for prediabetes.
-                    Consider discussing these results with your healthcare provider.
-                    """)
-                if bmi_value > 25 and diab_prediction[0] == 0:
-                    st.info# -*- coding: utf-8 -*-
-
-import pickle
-import streamlit as st
-import sys
-import subprocess
-import importlib
-
-# Check if required packages are installed, if not install them
-required_packages = {
-    'streamlit_option_menu': 'streamlit-option-menu',
-    'scikit-learn': 'scikit-learn',  
-    'pandas': 'pandas'
-}
-
-for package_name in required_packages.values():
-    try:
-        if package_name == 'scikit-learn':
-            importlib.import_module('sklearn')
-            importlib.import_module('sklearn.model_selection')
-        elif package_name == 'streamlit-option-menu':
-            importlib.import_module('streamlit_option_menu')
-        else:
-            importlib.import_module(package_name)
-    except ImportError:
-        st.info(f"Installing required package: {package_name}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", package_name])
-        st.rerun()
-
-# Now import after ensuring it's installed
-from streamlit_option_menu import option_menu
-
-# Set page configuration
-st.set_page_config(page_title="Health Assistant",
-                   layout="wide",
-                   page_icon="🧑‍⚕️")
-
-# Loading the saved models
-import pandas as pd
-
-# Import sklearn modules with proper error handling
-try:
-    import sklearn
-    from sklearn.model_selection import train_test_split
-    from sklearn.ensemble import RandomForestClassifier
-
-    try:
-        sklearn_version = sklearn.__version__
-        st.info(f"Using scikit-learn version: {sklearn_version}")
-    except AttributeError:
-        st.info("scikit-learn is successfully imported")
-
-except ImportError as e:
-    st.error(f"Error importing sklearn modules: {e}")
-    st.info("Attempting to reinstall scikit-learn...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "scikit-learn"])
-    try:
-        import sklearn
-        from sklearn.model_selection import train_test_split
-        from sklearn.ensemble import RandomForestClassifier
-
-        try:
-            sklearn_version = sklearn.__version__
-            st.info(f"Using scikit-learn version: {sklearn_version}")
-        except AttributeError:
-            st.info("scikit-learn is successfully imported after reinstallation")
-
-    except ImportError as e:
-        st.error(f"Still having issues with scikit-learn: {e}")
-        st.error("Please try restarting the application or installing scikit-learn manually.")
-        sys.exit(1)  
-    st.rerun()
-
-# Load and prepare diabetes data
-diabetes_data = pd.read_csv('diabetes.csv')
-X_diabetes = diabetes_data.drop('Outcome', axis=1)
-y_diabetes = diabetes_data['Outcome']
-diabetes_model = RandomForestClassifier()
-diabetes_model.fit(X_diabetes, y_diabetes)
-
-# Load and prepare heart disease data
-heart_data = pd.read_csv('heart.csv')
-X_heart = heart_data.iloc[:, :-1]  
-y_heart = heart_data.iloc[:, -1]   
-heart_disease_model = RandomForestClassifier()
-heart_disease_model.fit(X_heart, y_heart)
-
-# Load and prepare Parkinson's data
-parkinsons_data = pd.read_csv('parkinsons.csv')
-parkinsons_data = parkinsons_data.drop('name', axis=1)
-X_parkinsons = parkinsons_data.drop('status', axis=1)
-y_parkinsons = parkinsons_data['status']
-parkinsons_model = RandomForestClassifier()
-parkinsons_model.fit(X_parkinsons, y_parkinsons)
-
-# Check if lung cancer dataset exists and load it
-try:
-    lung_cancer_data = pd.read_csv('lung_cancer.csv')
-    X_lung_cancer = lung_cancer_data.drop('Cancer', axis=1)
-    y_lung_cancer = lung_cancer_data['Cancer']
-    lung_cancer_model = RandomForestClassifier()
-    lung_cancer_model.fit(X_lung_cancer, y_lung_cancer)
-    lung_cancer_model_ready = True
-except FileNotFoundError:
-    st.warning("Lung cancer dataset not found. Lung cancer prediction will be disabled.")
-    lung_cancer_model_ready = False
-
-# Check if hypothyroid dataset exists and load it
-try:
-    hypothyroid_data = pd.read_csv('hypothyroid.csv')
-    X_hypothyroid = hypothyroid_data.drop('Hypothyroid', axis=1)
-    y_hypothyroid = hypothyroid_data['Hypothyroid']
-    hypothyroid_model = RandomForestClassifier()
-    hypothyroid_model.fit(X_hypothyroid, y_hypothyroid)
-    hypothyroid_model_ready = True
-except FileNotFoundError:
-    st.warning("Hypothyroid dataset not found. Hypothyroid prediction will be disabled.")
-    hypothyroid_model_ready = False
-
-#Sidebar for navigators
-with st.sidebar:
-    selected = option_menu('Multiple Disease Prediction System',
-                           ['Diabetes Prediction',
-                            'Heart Disease Prediction',
-                            'Parkinsons Prediction',
-                            'Lung Cancer Prediction',
-                            'Hypothyroid Prediction'],
-                           icons = ['activity', 'heart', 'person', 'lungs', 'thermometer'],
-                           default_index = 0)
-    
-# Diabetes Prediction Page
-if (selected == 'Diabetes Prediction'):
-
-    st.title('Diabetes Prediction Using ML')
-
-    st.write("""
-    ### About Diabetes
-    Diabetes is a chronic condition that affects how your body processes blood sugar (glucose).
-    This tool uses several health metrics to assess the likelihood of diabetes.
-
-    **Note:** This tool is for educational purposes only and should not replace professional medical advice.
-    """)
-
-    diabetes_example = {
-        'Pregnancies': '6',
-        'Glucose': '148',
-        'BloodPressure': '72',
-        'SkinThickness': '35',
-        'Insulin': '0',
-        'BMI': '33.6',
-        'DiabetesPedigreeFunction': '0.627',
-        'Age': '50'
-    }
-
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        if st.button('Fill Example Values', key='diabetes_example'):
-            for key, value in diabetes_example.items():
-                st.session_state[key] = value
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-       Pregnancies = st.text_input('Number of Pregnancies',
-                                  key='Pregnancies',
-                                  help='Number of times pregnant (0 for males)')
-
-    with col2:
-       Glucose = st.text_input('Glucose Level (mg/dL)',
-                              key='Glucose',
-                              help='Plasma glucose concentration after 2 hours in an oral glucose tolerance test. Normal fasting: 70-99 mg/dL')
-
-    with col3:
-       BloodPressure = st.text_input('Blood Pressure (mm Hg)',
-                                    key='BloodPressure',
-                                    help='Diastolic blood pressure. Normal: <80 mm Hg')
-
-    with col1:
-       SkinThickness = st.text_input('Skin Thickness (mm)',
-                                    key='SkinThickness',
-                                    help='Triceps skin fold thickness. Measures fat content')
-
-    with col2:
-       Insulin = st.text_input('Insulin Level (μU/ml)',
-                              key='Insulin',
-                              help='2-Hour serum insulin. Normal fasting: <25 μU/ml')
-
-    with col3:
-       BMI = st.text_input('BMI value',
-                          key='BMI',
-                          help='Body Mass Index. Normal: 18.5-24.9')
-
-    with col1:
-       DiabetesPedigreeFunction = st.text_input('Diabetes Pedigree Function',
-                                               key='DiabetesPedigreeFunction',
-                                               help='Scores likelihood of diabetes based on family history')
-
-    with col2:
-       Age = st.text_input('Age (years)',
-                          key='Age',
-                          help='Age in years')
-
-    diab_diagnosis = ''
-
-    if st.button('Diabetes Test Result'):
-        try:
-            input_dict = {
-                'Pregnancies': Pregnancies,
-                'Glucose': Glucose,
-                'BloodPressure': BloodPressure,
-                'SkinThickness': SkinThickness,
-                'Insulin': Insulin,
-                'BMI': BMI,
-                'DiabetesPedigreeFunction': DiabetesPedigreeFunction,
-                'Age': Age
-            }
-
-            input_df = pd.DataFrame([input_dict])
-
-            for column in input_df.columns:
-                input_df[column] = input_df[column].astype(float)
-
-            diab_prediction = diabetes_model.predict(input_df)
-
-            if diab_prediction[0] == 1:
-                diab_diagnosis = 'The person is likely to have diabetes'
-                st.warning("""
-                **What is Diabetes?**
-                Diabetes is a metabolic disease that causes high blood sugar levels. The hormone insulin
-                moves sugar from the blood into your cells to be stored or used for energy. With diabetes,
-                your body either doesn't make enough insulin or can't effectively use the insulin it makes.
-
-                **Next Steps:**
-                If you received a positive prediction, please consult with a healthcare provider for proper
-                testing and diagnosis. This prediction is not a medical diagnosis.
-                """)
-            else:
-                diab_diagnosis = 'The person is not likely to have diabetes'
-
-            st.success(diab_diagnosis)
-
-            try:
-                glucose_value = float(Glucose)
-                bmi_value = float(BMI)
-                if glucose_value > 99 and diab_prediction[0] == 0:
-                    st.info("""
-                    **Note:** Your glucose level appears to be elevated, which can be a risk factor for prediabetes.
-                    Consider discussing these results with your healthcare provider.
-                    """)
-                if bmi_value > 25 and diab_prediction[0# -*- coding: utf-8 -*-
-
-import pickle
-import streamlit as st
-import sys
-import subprocess
-import importlib
-
-# Check if required packages are installed, if not install them
-required_packages = {
-    'streamlit_option_menu': 'streamlit-option-menu',
-    'scikit-learn': 'scikit-learn',  # Changed from 'sklearn' to 'scikit-learn'
-    'pandas': 'pandas'
-}
-
-for package_name in required_packages.values():
-    try:
-        # Try to import the package to check if it's installed
-        if package_name == 'scikit-learn':
-            # For scikit-learn, we need to check sklearn module
-            importlib.import_module('sklearn')
-            # Also explicitly check for sklearn.model_selection
-            importlib.import_module('sklearn.model_selection')
-        elif package_name == 'streamlit-option-menu':
-            importlib.import_module('streamlit_option_menu')
-        else:
-            importlib.import_module(package_name)
-    except ImportError:
-        st.info(f"Installing required package: {package_name}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", package_name])
-        st.rerun()
-
-# Now import after ensuring it's installed
-from streamlit_option_menu import option_menu
-
-# Set page configuration
-st.set_page_config(page_title="Health Assistant",
-                   layout="wide",
-                   page_icon="🧑‍⚕️")
-
-# Loading the saved models
-# We need to train models first since we only have CSV data files
-import pandas as pd
-
-# Import sklearn modules with proper error handling
-try:
-    # First try to import the base sklearn module
-    import sklearn
-    # Then import specific modules
-    from sklearn.model_selection import train_test_split
-    from sklearn.ensemble import RandomForestClassifier
-
-    # Verify sklearn is properly installed by using it
-    # Get version safely
-    try:
-        sklearn_version = sklearn.__version__
-        st.info(f"Using scikit-learn version: {sklearn_version}")
-    except AttributeError:
-        # If __version__ is not available, just confirm it's imported
-        st.info("scikit-learn is successfully imported")
-
-except ImportError as e:
-    st.error(f"Error importing sklearn modules: {e}")
-    st.info("Attempting to reinstall scikit-learn...")
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "--upgrade", "scikit-learn"])
-    # After reinstalling, try to import again
-    try:
-        import sklearn
-        from sklearn.model_selection import train_test_split
-        from sklearn.ensemble import RandomForestClassifier
-
-        # Try to get version again
-        try:
-            sklearn_version = sklearn.__version__
-            st.info(f"Using scikit-learn version: {sklearn_version}")
-        except AttributeError:
-            st.info("scikit-learn is successfully imported after reinstallation")
-
-    except ImportError as e:
-        st.error(f"Still having issues with scikit-learn: {e}")
-        st.error("Please try restarting the application or installing scikit-learn manually.")
-        sys.exit(1)  # Exit if sklearn cannot be imported after reinstall attempt
-    st.rerun()
-
-# Load and prepare diabetes data
-diabetes_data = pd.read_csv('diabetes.csv')
-X_diabetes = diabetes_data.drop('Outcome', axis=1)
-y_diabetes = diabetes_data['Outcome']
-diabetes_model = RandomForestClassifier()
-diabetes_model.fit(X_diabetes, y_diabetes)
-
-# Load and prepare heart disease data
-heart_data = pd.read_csv('heart.csv')
-X_heart = heart_data.iloc[:, :-1]  # All columns except the last one
-y_heart = heart_data.iloc[:, -1]   # Last column is the target
-heart_disease_model = RandomForestClassifier()
-heart_disease_model.fit(X_heart, y_heart)
-
-# Load and prepare Parkinson's data
-parkinsons_data = pd.read_csv('parkinsons.csv')
-# Drop the name column as it's not a feature
-parkinsons_data = parkinsons_data.drop('name', axis=1)
-# Extract features and target
-X_parkinsons = parkinsons_data.drop('status', axis=1)
-y_parkinsons = parkinsons_data['status']
-parkinsons_model = RandomForestClassifier()
-parkinsons_model.fit(X_parkinsons, y_parkinsons)
-
-# Check if lung cancer dataset exists and load it
-try:
-    # Load and prepare lung cancer data
-    lung_cancer_data = pd.read_csv('lung_cancer.csv')
-    # Assuming the target column is named 'Cancer' (1 for cancer, 0 for no cancer)
-    # Modify this according to your actual dataset
-    X_lung_cancer = lung_cancer_data.drop('Cancer', axis=1)
-    y_lung_cancer = lung_cancer_data['Cancer']
-    lung_cancer_model = RandomForestClassifier()
-    lung_cancer_model.fit(X_lung_cancer, y_lung_cancer)
-    lung_cancer_model_ready = True
-except FileNotFoundError:
-    st.warning("Lung cancer dataset not found. Lung cancer prediction will be disabled.")
-    lung_cancer_model_ready = False
-
-# Check if hypothyroid dataset exists and load it
-try:
-    # Load and prepare hypothyroid data
-    hypothyroid_data = pd.read_csv('hypothyroid.csv')
-    # Assuming the target column is named 'Hypothyroid' (1 for hypothyroid, 0 for normal)
-    # Modify this according to your actual dataset
-    X_hypothyroid = hypothyroid_data.drop('Hypothyroid', axis=1)
-    y_hypothyroid = hypothyroid_data['Hypothyroid']
-    hypothyroid_model = RandomForestClassifier()
-    hypothyroid_model.fit(X_hypothyroid, y_hypothyroid)
-    hypothyroid_model_ready = True
-except FileNotFoundError:
-    st.warning("Hypothyroid dataset not found. Hypothyroid prediction will be disabled.")
-    hypothyroid_model_ready = False
-
-# Sidebar for navigators
-with st.sidebar:
-    selected = option_menu('Multiple Disease Prediction System',
-
-                           ['Diabetes Prediction',
-                            'Heart Disease Prediction',
-                            'Parkinsons Prediction',
-                            'Lung Cancer Prediction',
-                            'Hypothyroid Prediction'],
-                           icons=['activity', 'heart', 'person', 'lungs', 'thermometer'],
-                           default_index=0)
-
-# Diabetes Prediction Page
-if (selected == 'Diabetes Prediction'):
-
-    # page title
-    st.title('Diabetes Prediction Using ML')
-
-    st.write("""
-    ### About Diabetes
-    Diabetes is a chronic condition that affects how your body processes blood sugar (glucose).
-    This tool uses several health metrics to assess the likelihood of diabetes.
-
-    **Note:** This tool is for educational purposes only and should not replace professional medical advice.
-    """)
-
-    # Example values for diabetes
-    diabetes_example = {
-        'Pregnancies': '6',
-        'Glucose': '148',
-        'BloodPressure': '72',
-        'SkinThickness': '35',
-        'Insulin': '0',
-        'BMI': '33.6',
-        'DiabetesPedigreeFunction': '0.627',
-        'Age': '50'
-    }
-
-    # Add example values button
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        if st.button('Fill Example Values', key='diabetes_example'):
-            for key, value in diabetes_example.items():
-                st.session_state[key] = value
-
-    # getting the input data from the user
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        Pregnancies = st.text_input('Number of Pregnancies',
-                                  key='Pregnancies',
-                                  help='Number of times pregnant (0 for males)')
-
-    with col2:
-        Glucose = st.text_input('Glucose Level (mg/dL)',
-                              key='Glucose',
-                              help='Plasma glucose concentration after 2 hours in an oral glucose tolerance test. Normal fasting: 70-99 mg/dL')
-
-    with col3:
-        BloodPressure = st.text_input('Blood Pressure (mm Hg)',
-                                    key='BloodPressure',
-                                    help='Diastolic blood pressure. Normal: <80 mm Hg')
-
-    with col1:
-        SkinThickness = st.text_input('Skin Thickness (mm)',
-                                    key='SkinThickness',
-                                    help='Triceps skin fold thickness. Measures fat content')
-
-    with col2:
-        Insulin = st.text_input('Insulin Level (μU/ml)',
-                              key='Insulin',
-                              help='2-Hour serum insulin. Normal fasting: <25 μU/ml')
-
-    with col3:
-        BMI = st.text_input('BMI value',
-                          key='BMI',
-                          help='Body Mass Index. Normal: 18.5-24.9')
-
-    with col1:
-        DiabetesPedigreeFunction = st.text_input('Diabetes Pedigree Function',
-                                               key='DiabetesPedigreeFunction',
-                                               help='Scores likelihood of diabetes based on family history')
-
-    with col2:
-        Age = st.text_input('Age (years)',
-                          key='Age',
-                          help='Age in years')
-
-    # code for Prediction
-    diab_diagnosis = ''
-
-    # creating a button for Prediction
-    if st.button('Diabetes Test Result'):
-        try:
-            # Create a dictionary with feature names matching the training data
-            input_dict = {
-                'Pregnancies': Pregnancies,
-                'Glucose': Glucose,
-                'BloodPressure': BloodPressure,
-                'SkinThickness': SkinThickness,
-                'Insulin': Insulin
