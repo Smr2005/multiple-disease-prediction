@@ -7,8 +7,8 @@ This application uses machine learning to predict the likelihood of various dise
 1. Diabetes
 2. Heart Disease
 3. Parkinson's Disease
-4. Lung Cancer (optional)
-5. Hypothyroidism (optional)
+4. Lung Cancer 
+5. Hypothyroidism 
 
 ## Setup Instructions
 
